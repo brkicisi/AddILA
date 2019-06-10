@@ -547,7 +547,7 @@ public class ILADebug {
 
     /**
      * Modify dcp/dsgn.edf because it won't open in Vivado without this change.
-     * This change was determined expirementally and is not guarenteed to be the best way to solve this issue.
+     * This change was determined expirementally and is not guaranteed to be the best way to solve this issue.
      * @param input_dcp Absolute path to dcp file containing edif file to be changed.
      * @param output_dcp Absolute path to write dcp file containing changed edif.
      * @return Completed successfully.
@@ -870,7 +870,7 @@ public class ILADebug {
     }
 
     /**
-     * Load the probes map from input_robes_file if specified, else from nets marked for debug.
+     * Load the probes map from input_probes_file if specified, else from nets marked for debug.
      * Also sets the probe count from command line if given, else sets it same as size of probe map.
      */
     private int loadProbes(int step){
@@ -960,7 +960,7 @@ public class ILADebug {
      * 
 	 * Specialized function to connect a debug port within an EDIF netlist.  
 	 * @param topPortNet The top-level net that connects to the debug core's input port.
-	 * @param routedNetName The name of the routed net who's source is the net we need to connect to
+	 * @param routedNetName The name of the routed net whose source is the net we need to connect to
 	 * @param newPortName The name of the port to be added at each level of hierarchy
 	 * @param parentInst The instance where topPortNet resides
 	 * @param instMap The map of the design created by {@link EDIFTools#generateCellInstMap(EDIFCellInst)} 
@@ -1025,7 +1025,7 @@ public class ILADebug {
     /**
      * Modified from ProbeRouter.updateProbeConnections()
      * 
-     * Updates a design containing an ILA (integrated logic analyzer) probe
+     * Updates a design containing ILA (integrated logic analyzer) probe
      * connections that already exist in a design.
      */
     private void my_updateProbeConnections(){
@@ -1170,8 +1170,7 @@ public class ILADebug {
         writeProbesFile(output_probes_file.getAbsolutePath());
 
         script = new TCLScript(filename, filename, "place_route_write.tcl");
-        script.add(TCLEnum.PLACE);      // place, route
-        script.add(TCLEnum.ROUTE);
+        script.add(TCLEnum.ROUTE);      // route
         script.add(TCLEnum.WRITE_LTX);  // write ltx, dcp, bitstream
         script.add(TCLEnum.WRITE_DCP);
         script.add(TCLEnum.WRITE_BITSTREAM);
