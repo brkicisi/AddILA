@@ -14,7 +14,9 @@ directory in the class path as well as $CLASSPATH (which is set or appended to b
 compile: `javac ILADebug.java`\
 run: `java -cp .:<RapidWright_dir>/RapidWright:$CLASSPATH ILADebug <args ...>`
 
-Help with the arguments can be found by invoking run with any set of arguments including `-h` or `--help`.
+#### Arguments
+
+Further help with the arguments can be found by invoking run with any set of arguments including `-h` or `--help`.
 
 ### Specifying Probes
 
