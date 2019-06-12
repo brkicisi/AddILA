@@ -23,14 +23,6 @@
  * Vivado version: 18.3
  * RapidWright version: 2018.3.3 (installed 17 May 2018)
  * 
- * Version 1.0
- *  7 June 2019
- *      - Works successfully on a simple test project (Vivado tutorial 2) on Nexys 4 board.
- * 
- * 
- * TODO
- *      - add functionality to just open a design and generate a probes file
- * 
  */
 
 import java.io.File;
@@ -42,11 +34,16 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map.Entry;
+import java.util.Comparator;
 import java.lang.String;
 import java.lang.StringBuilder;
 
@@ -152,6 +149,34 @@ public class ILADebug {
         public String getHelp(){
             return (help_str == null) ? "" : help_str;
         }
+    }
+    
+    // This comparator was taken directly from com/xilinx/rapidwright/util/StringTools.java
+    private static Comparator<String> naturalComparator;
+	static {
+		naturalComparator = new Comparator<String>() {
+			private boolean isDigit(char c){
+				return 0x30 <= c && c <= 0x39;
+			}
+			
+			@Override
+			public int compare(String a, String b){
+				int ai = 0, bi = 0;
+				while(ai < a.length() && bi < b.length()){
+					if(isDigit(a.charAt(ai)) && isDigit(b.charAt(bi))){
+						int aStart = ai, bStart = bi;
+						while(ai < a.length() && isDigit(a.charAt(ai))) ai++;
+						while(bi < b.length() && isDigit(b.charAt(bi))) bi++;
+						int aInt = Integer.parseInt(a.substring(aStart,ai));
+						int bInt = Integer.parseInt(b.substring(bStart,bi));
+						if(aInt != bInt) return aInt - bInt;
+					} else if(a.charAt(ai) != b.charAt(bi)) 
+						return a.charAt(ai) - b.charAt(bi);
+					ai++; bi++;
+				}
+				return a.length() - b.length();
+			}
+		};
     }
     
     static enum TCLEnum {
@@ -322,6 +347,12 @@ public class ILADebug {
     int probe_depth = 4096;
     String clk_net = null;
 
+    String default_net = null;
+    Map<String, String> meta_map = null;
+
+
+    private static final int MAX_PROBE_COUNT = 4096;
+
     // constructor
     public ILADebug(){
         arg_map = new HashMap<>();
@@ -404,7 +435,8 @@ public class ILADebug {
                 "Location of .iii directory. Intermediate designs and other temporary files are stored here."),
         new MyToken("probe_count", new String[]{"-p", "--probe_count"},
                 new String[]{"probe_count"}, new boolean[]{true},
-                "Insert this many probe wires. May force refresh if input number of wires differs "
+                "Insert this many probe wires (ignored if smaller than number of wires in probe map). "
+                + "May force refresh if input number of wires differs "
                 + "from the number of wires in the intermediate design. Default: number of net wires "
                 + "in probe map (from probes file or nets marked for debug)."),
         new MyToken("probe_depth", new String[]{"-P", "--probe_depth"},
@@ -508,6 +540,125 @@ public class ILADebug {
         for (String probe : probe_list)
             p.add(probe + " " + probe_map.get(probe));
         FileTools.writeLinesToTextFile(p, filename);
+    }
+
+    /**
+     * Writes probe_depth and clk_net to a file so that it knows what they were when it resumes from an
+     * intermediate design.
+     */
+    public void writeMetadata(){
+        File f = new File(iii_dir, "metadata.txt");
+        printIfVerbose("Writing metadata to '" + f.getAbsolutePath() + "'");
+
+        List<String> lines = new ArrayList<>();
+        lines.add("# This is a metadata file.");
+        lines.add("# Mappings: <key> -> <value>");
+        
+        lines.add("probe_depth" + " = " + probe_depth);
+        lines.add("clk_net" + " = " + clk_net);
+        
+        FileTools.writeLinesToTextFile(lines, f.getAbsolutePath());
+    }
+
+    /**
+     * Reads probe_depth and clk_net from a file. Used when loading an intermediate design.
+     */
+    public void readMetadata(){
+        File f = new File(iii_dir, "metadata.txt");
+        if(!f.exists()){
+            printIfVerbose("No metadata found at '" + f.getAbsolutePath() + "'");
+            return;
+        }
+        
+        printIfVerbose("Reading metadata from '" + f.getAbsolutePath() + "'");
+
+        meta_map = new HashMap<>();
+        List<String> lines = FileTools.getLinesFromTextFile(f.getAbsolutePath());
+		for(String line : lines){
+            if(line.trim().startsWith("#"))
+                continue;
+            if(line.trim().isEmpty())
+                continue;
+			String[] parts = line.split("=");
+			meta_map.put(parts[0].trim(), parts[1].trim());
+		}
+    }
+
+    /**
+     * Load probe_depth from command line or metadata or default (in that order).
+     * @return True if command line arg contradicted metadata. False otherwise.
+     */
+    private boolean loadProbeDepth(){
+        String key = "probe_depth";
+        List<String> list = arg_map.get(key);
+        String sv = null;
+        int v = -1;
+
+        try {
+            if(meta_map != null && (sv = meta_map.get(key)) != null)
+                v = Integer.parseInt(sv);
+        } catch(NumberFormatException nfe){
+            sv = null;
+        }
+
+        if(list != null){
+            try {
+                probe_depth = Integer.parseInt(list.get(0));
+            } catch(NumberFormatException nfe){
+                printIfVerbose("Couldn't parse '" + list.get(0) + "' as an integer " + key + ".");
+                list = null;
+            }
+
+            if(sv != null && probe_depth != v){
+                printIfVerbose(key + " '" + probe_depth + "' at command line did not equal "
+                        + key + " '" + v + "' from metadata.");
+                return true;
+            }
+            printIfVerbose("Used " + key + " of '" + probe_depth + "'.");
+        }
+        else if(sv != null || list == null){
+            probe_depth = v;
+            printIfVerbose("Used " + key + " of '" + probe_depth + "' from metadata.");
+        }
+        else {
+            probe_depth = 4096;
+            printIfVerbose("Used default " + key + " of '" + probe_depth + "'.");
+        }
+        return false;
+    }
+
+    /**
+     * Load clk_net from command line or metadata or default (in that order).
+     * @return True if command line arg contradicted metadata. False otherwise.
+     */
+    private boolean loadClkNet(){
+        String key = "clk_net";
+        List<String> list = arg_map.get(key);
+        String v = null;
+        if(meta_map != null){
+            v = meta_map.get(key);
+            if(v != null && v.equals("null"))
+                v = null;
+        }
+        
+        if(list != null){
+            clk_net = list.get(0);
+            if(v != null && !clk_net.equals(v)){
+                printIfVerbose(key + " '" + clk_net + "' at command line did not equal "
+                        + key + " '" + v + "' from metadata.");
+                return true;
+            }
+            printIfVerbose("Used " + key + " of '" + clk_net + "'.");
+        }
+        else if(v != null){
+            clk_net = meta_map.get(key);
+            printIfVerbose("Used " + key + " of '" + clk_net + "' from metadata.");
+        }
+        else {
+            clk_net = "clk_100MHz";
+            printIfVerbose("Used default " + key + " of '" + clk_net + "'.");
+        }
+        return false;
     }
 
     /**
@@ -777,21 +928,9 @@ public class ILADebug {
      * @return An integer indicating what step to continue at. (0 = original design, 1 = design with ila)
      */
     private int loadDesign(){
-        ArrayList<String> list = arg_map.get("probe_depth");
-        if(list == null)
-            probe_depth = 4096;
-        else {
-            try {
-                probe_depth = Integer.parseInt(list.get(0));
-            } catch(NumberFormatException nfe){
-                printIfVerbose("Couldn't parse '" + list.get(0) + "' as an integer probe depth.");
-            }
-        }
-        list = arg_map.get("clk_net");
-        if(list == null)
-            clk_net = "clk_100MHz";
-        else
-            clk_net = list.get(0);
+        boolean differs_from_metadata = false;
+        differs_from_metadata = loadProbeDepth() || differs_from_metadata;
+        differs_from_metadata = loadClkNet() || differs_from_metadata;
 
         if(no_ila_dcp_file == null){
             if(no_probes_dcp_file == null)
@@ -810,6 +949,10 @@ public class ILADebug {
                 MessageGenerator.briefErrorAndExit("Canceling operation. Refresh requested,"
                         + " but can't find input_dcp.\n");
             }
+            else if(differs_from_metadata){
+                MessageGenerator.briefErrorAndExit("Canceling operation. Requested args differ from metadata,"
+                        + " but can't find input_dcp.\n");
+            }
             design = safeReadCheckpoint(no_probes_dcp_file);
             return 1;
         }
@@ -822,7 +965,7 @@ public class ILADebug {
                 return 0;
             }
             else { // both exist
-                if(arg_map.containsKey("refresh")
+                if(arg_map.containsKey("refresh") || differs_from_metadata
                         || FileTools.isFileNewer(no_ila_dcp_file.getAbsolutePath(), 
                                                     no_probes_dcp_file.getAbsolutePath())){
                     // no_ila is newer than no_probes or refresh requested
@@ -870,26 +1013,153 @@ public class ILADebug {
     }
 
     /**
+     * This function searches the top level user design for a reset (or rst) net if it can find one.
+     * This net will be used to connect unused probe wires since unconnected probe wires cause errors.
+     * @param input_probes A collection of probe strings to use to find the name of the top instance of the user design.
+     */
+    private void setDefaultNet(Collection<String> input_probes){
+        List<EDIFNet> reset_nets = new ArrayList<>();
+        List<EDIFNet> rst_nets = new ArrayList<>();
+        List<EDIFNet> other_nets = new ArrayList<>();
+        String extra_net = null;
+        String dsgn_inst = null;
+
+        // Try to find a reset net to connect to the unconnected pins
+        try {
+            for(String hier_name : input_probes){
+                try {
+                    String[] path = hier_name.split("/");
+                    dsgn_inst = path[0];
+                    break;
+                } catch(IndexOutOfBoundsException iob){
+                    continue;
+                }
+            }
+            if(dsgn_inst == null)
+                throw new NullPointerException();
+
+            for(EDIFNet n : design.getNetlist().getTopCell().getNets()){
+                String name = n.getName().toLowerCase();
+                boolean buffered_name = n.getName().contains("BUF");
+
+                if(name.contains("reset") && !buffered_name)
+                    reset_nets.add(n);
+                else if(name.contains("rst") && !buffered_name)
+                    rst_nets.add(n);
+                else if(!name.contains("clk") && !name.contains("clock") && !buffered_name) // not a clk net
+                    other_nets.add(n);
+            }
+
+            for(EDIFNet n : reset_nets){
+                default_net = dsgn_inst + "/" + n.getName();
+                if(EDIFTools.getNet(design.getNetlist(), default_net) != null)
+                    return;
+            }
+            for(EDIFNet n : rst_nets){
+                default_net = dsgn_inst + "/" + n.getName();
+                if(EDIFTools.getNet(design.getNetlist(), default_net) != null)
+                    return;
+            }
+            printIfVerbose("\nNo nets found in top module containing 'reset' or 'rst'.");
+            printIfVerbose("Selecting net to connect unused probes to at random.");
+            for(EDIFNet n : other_nets){
+                default_net = dsgn_inst + "/" + n.getName();
+                if(EDIFTools.getNet(design.getNetlist(), default_net) != null)
+                    return;
+            }
+            printIfVerbose("\nFailed to find a net to connect unused probes to.");
+        } catch(NullPointerException npe){
+            printIfVerbose("\nFailed to find a net to connect unused probes to.");
+            default_net = null;
+        }
+    }
+
+    /**
+     * Set probe_map using data from input_probes_file.
+     * This function populates probe_map and ensures that the entries in it cover probes
+     * numbering 0 to probe_map.size()-1.
+     */
+    public void getProbesFromFile(){
+        Map<String, String> input_probes = ProbeRouter.readProbeRequestFile(input_probes_file.getAbsolutePath());
+        String[] probe_str = {"top/u_ila_0/probe0[", "]"};
+        LinkedList<String> bad_probe = new LinkedList<>();
+        TreeSet<Integer> probe_nums = new TreeSet<>();
+        probe_map = new TreeMap<>(naturalComparator);
+
+        // set default net
+        setDefaultNet(input_probes.values());
+
+        // add probe->net pairs that are valid (conform to probe_str) to probe_map and the probe index to probe_nums
+        // if probe is invalid, add net to bad_probes
+        int p_num = -1;
+        for(Entry<String, String> p : input_probes.entrySet()){
+            if(p.getKey().startsWith(probe_str[0]) && p.getKey().endsWith(probe_str[1])){
+                try {
+                    p_num = Integer.parseInt(p.getKey().substring(probe_str[0].length(), 
+                                    p.getKey().length() - probe_str[1].length()));
+                    probe_nums.add(p_num);
+                    probe_map.put(p.getKey(), p.getValue());
+                } catch(NumberFormatException nfe){
+                    bad_probe.add(p.getValue());
+                }
+            }
+            else
+                bad_probe.add(p.getValue());
+        }
+        /* for(contiguous i = 0 to end)
+         *   continue if:
+         *      there are more nets in bad_probe (as long as i does not exceed MAX_PROBE_COUNT)
+         *      or there is a good probe with a higher index than i
+         */
+        for(int i = 0 ; i < probe_nums.last() || (!bad_probe.isEmpty() && i < MAX_PROBE_COUNT) ; i++){
+            if(probe_nums.contains(i))
+                continue;
+            if(!bad_probe.isEmpty()){
+                String s = bad_probe.pollFirst();
+                probe_map.put(probe_str[0] + i + probe_str[1], s);
+            }
+            else
+                probe_map.put(probe_str[0] + i + probe_str[1], default_net);
+        }
+    }
+
+    /**
+     * Adds default connections to probe_map so that it's size is equal to p_count.
+     * @param p_count Number of probes desired.
+     */
+    private void padProbeMap(int p_count){
+        String[] probe_str = {"top/u_ila_0/probe0[", "]"};
+        for(int i = probe_map.size() ; i < p_count ; i++)
+            probe_map.put(probe_str[0] + i + probe_str[1], default_net);
+    }
+
+    /**
      * Load the probes map from input_probes_file if specified, else from nets marked for debug.
      * Also sets the probe count from command line if given, else sets it same as size of probe map.
      */
     private int loadProbes(int step){
         // if given probe file, load from it
         if(arg_map.containsKey("input_probes_file")){
-            probe_map = ProbeRouter.readProbeRequestFile(input_probes_file.getAbsolutePath());
+            getProbesFromFile();
 
             if(probe_map == null || probe_map.size() < 1)
                 MessageGenerator.briefErrorAndExit("No probes found in probe file '"
                         + input_probes_file.getAbsolutePath() + "'.\nExiting.");
+            else if(probe_map.size() > MAX_PROBE_COUNT)
+                MessageGenerator.briefErrorAndExit("Too many probes (or too high index probes) "
+                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                        + "'.\nMaximum index of a probe is " + (MAX_PROBE_COUNT-1) + " .\nExiting.");
         }
         // load from nets marked for debug
         else {
             List<String> debug_nets = ILAInserter.getNetsMarkedForDebug(design);
+            setDefaultNet(debug_nets);
             probe_map = new HashMap<>();
-            for(int i = 0 ; i < debug_nets.size() ; i++){
-                String probe = "top/u_ila_0/probe0[" + i + "]";
-                probe_map.put(probe, debug_nets.get(i));
-            }
+            
+            String[] probe_str = {"top/u_ila_0/probe0[", "]"};
+            for(int i = 0 ; i < debug_nets.size() && i < MAX_PROBE_COUNT; i++)
+                probe_map.put(probe_str[0] + i + probe_str[1], debug_nets.get(i));
+
             if(probe_map.size() < 1){
                 StringBuilder sb = new StringBuilder();
                 sb.append("No nets marked for debug in '");
@@ -902,13 +1172,29 @@ public class ILADebug {
                 sb.append("'.\nExiting.");
                 MessageGenerator.briefErrorAndExit(sb.toString());
             }
+            else if(debug_nets.size() > MAX_PROBE_COUNT)
+                MessageGenerator.briefMessage("\nMore than " + MAX_PROBE_COUNT + " nets marked for debug. \n"
+                        + "Truncating list of debug nets.");
         }
 
         ArrayList<String> list = arg_map.get("probe_count");
         if(list != null){
             try {
                 int np = Integer.parseInt(list.get(0));
-                probe_count = np;
+                if(probe_map.size() > np){
+                    printIfVerbose("\nIgnoring input probe_count of '" + np + "'.");
+                    printIfVerbose("It is smaller than probe_map size of '" + probe_map.size() + "'.");
+                    probe_count = probe_map.size();
+                }
+                else if(np > MAX_PROBE_COUNT){
+                    printIfVerbose("\nIgnoring input probe_count of '" + np + "'.");
+                    printIfVerbose("It is larger than maximum number of probes (" + probe_map.size() + ").");
+                    probe_count = probe_map.size();
+                }
+                else {
+                    probe_count = np;
+                    padProbeMap(np);
+                }
             } catch (NumberFormatException nfe) {
                 printIfVerbose("Couldn't parse '" + list.get(0) + "' as an integer probe count.");
                 probe_count = probe_map.size();
@@ -941,17 +1227,12 @@ public class ILADebug {
 
         if(p_count < probe_count){
             printIfVerbose("Not enough wires. Must add an ila with more wires to input dcp.");
-            
+
             design = safeReadCheckpoint(no_ila_dcp_file);
-
-            //TODO 
-            // save intermediate copies?
-            // how to organize?
-            // metadata.txt?
-            // dangling wires if p_count > probe_count
-
             return 0;
         }
+        else
+            padProbeMap(p_count);
         return step;
     }
 
@@ -1113,6 +1394,7 @@ public class ILADebug {
         mapArgs(args); // parse arguments
         setFiles(); // find files that were input
         checkForFileCollisions();
+        readMetadata();
         int step = loadDesign();
         step = loadProbes(step);
         
@@ -1143,6 +1425,7 @@ public class ILADebug {
                 Integer.toString(probe_depth),
                 clk_net
             };
+            writeMetadata();
 
             // Add ila and write intermediate checkpoint
             ILAInserter.main(ila_inserter_args);

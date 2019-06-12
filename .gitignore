@@ -9,7 +9,10 @@
 **/*.class
 **/*.pyc
 
+*.edf
+
 vivado*.log
 vivado*.jou
 
 .temp_xdef*
+.temp_edif*

@@ -20,9 +20,7 @@ Notes:
 	b.	The process 'create_preimplemented_ila_dcp' in rapidwright.tcl uses 'design_1' as a fixed constant. Do not name your block diagram the same or you will get an error.
 	c.	Changed <design_name>_wrapper.edf:<line_number> (tut_2_dsgn_wrapper.edf:349602 in my test)
 		- 	(instance top (viewref design_1_wrapper (cellref design_1_wrapper (libraryref work)))
-			)
 		+	(instance top (viewref netlist (cellref design_1_wrapper (libraryref work)))
-			)
 		Line number can be found from error that occurs when trying to open checkpoint without this change.
 		[EDIF 20-83] Cannot find cell 'design_1_wrapper' view 'design_1_wrapper' in library 'work' for instance 'top' ["/nfs/ug/homes-1/b/brkicisi/Documents/2019_summer/ILA/tutorial_2/tutorial_w_ila/tut_2_dsgn_wrapper.edf":349601]
 
@@ -36,11 +34,6 @@ Notes:
 ** TODO **
 
 B.	ECO Navigator
-
-C.	Must edif_write for each save_checkpoint (this can be implemented as a try catch. If catch, call a tcl to open checkpoint and write_edif)
-
-D.	write_bitstream fails if top/probes[] port is unconnected AND top/rw_probe0[] does not cover all of top/u_ila_0/probe0[]
-
 
 
 ** NOTES **
