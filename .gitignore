@@ -16,3 +16,4 @@ vivado*.jou
 
 .temp_xdef*
 .temp_edif*
+old/old_csh/**

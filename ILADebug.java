@@ -136,6 +136,8 @@ public class ILADebug {
             return sb.toString();
         }
         public String shortString(){
+            if(options.length < 1)
+                return "";
             StringBuilder sb = new StringBuilder("[");
             sb.append(options[0]);
             if(args.length > 0)
@@ -434,7 +436,10 @@ public class ILADebug {
         sb.append("\n");
         MessageGenerator.briefMessageAndExit(sb.toString());
     }
-    // used {c, d, f, i, o, Pp, q, r, Vv}
+
+    private static final String[] HELP_SWITCH = {"-h", "--help"};
+
+    // used {c, d, f, h i, o, Pp, q, r, Vv}
     private static final MyToken[] TOKEN_LIST = {
         new MyToken("input_probes_file", new String[]{"-i", "--input_probes"}, 
                 new String[]{"probes_txt/dcp"}, new boolean[]{true},
@@ -468,7 +473,9 @@ public class ILADebug {
         new MyToken("verbose", new String[]{"-v", "--verbose"},
                 "Display extra progress information (ignored if also quiet)."),
         new MyToken("extra_verbose", new String[]{"-V", "--extra_verbose"},
-                "Display extra progress information (ignored if also quiet). Run Vivado tcl commands with '-verbose' flag.")
+                "Display extra progress information (ignored if also quiet). Run Vivado tcl commands with '-verbose' flag."),
+        new MyToken("help", HELP_SWITCH,
+                "Print this help message and exit.")
     };
     private static final MyPositionalArg[] POSITIONAL_ARGS = {
         new MyPositionalArg("input_dcp", true,
@@ -476,7 +483,6 @@ public class ILADebug {
         new MyPositionalArg("output_dcp", true,
                 "Name to give final output design.")
     };
-    private static final String[] HELP_SWITCH = {"-h", "--help"};
 
     /**
      * Takes in a command line list and parses it into a HashMap.
@@ -554,6 +560,8 @@ public class ILADebug {
         List<String> probe_list = StringTools.naturalSort(new ArrayList<>(probe_map.keySet()));
         for (String probe : probe_list)
             p.add(probe + " " + probe_map.get(probe));
+        
+        printIfVerbose("\nWriting output probes file to '" + filename + "'.")
         FileTools.writeLinesToTextFile(p, filename);
     }
 
@@ -911,6 +919,8 @@ public class ILADebug {
             else
                 create_dir = filename + "/.iii";
         }
+        else
+            create_dir = ".iii";
         iii_dir = getDir(filename, true, false, create_dir, false);
 
 
@@ -943,6 +953,8 @@ public class ILADebug {
             filename = files.get(0);
             if(filename.startsWith("/") || filename.startsWith("~"))
                 output_dcp_file = new File(filename);
+            else if(filename.startsWith("#iii/"))
+                output_dcp_file = new File(iii_dir, filename.replaceFirst("#iii/", ""));
             else // assume filename relative to pwd
                 output_dcp_file = new File(pwd_dir, filename);
         }
@@ -957,9 +969,11 @@ public class ILADebug {
         else {
             filename = files.get(0);
             if(filename.startsWith("/") || filename.startsWith("~"))
-                output_dcp_file = new File(filename);
+                output_probes_file = new File(filename);
+            else if(filename.startsWith("#iii/"))
+                output_probes_file = new File(iii_dir, filename.replaceFirst("#iii/", ""));
             else // assume filename relative to pwd
-                output_dcp_file = new File(pwd_dir, filename);
+                output_probes_file = new File(pwd_dir, filename);
         }
     }
 
@@ -1219,7 +1233,7 @@ public class ILADebug {
      * Also sets the probe count from command line if given, else sets it same as size of probe map.
      */
     private int loadProbes(int step){
-        String probe_file = input_probes_file.getAbsolutePath();
+        String probe_file = (input_probes_file == null) ? null : input_probes_file.getAbsolutePath();
         
         // if given probe file, load from it
         if(probe_file != null){

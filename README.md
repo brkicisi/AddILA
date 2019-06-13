@@ -14,7 +14,7 @@ ILADebug.java is the main worker. It calls upon RapidWright libraries to add an 
 
 ### Running ILADebug
 
-ILADebug (hereafter the program) can be run like any other java file. It requires the RapidWright
+ILADebug can be run like any other java file. It requires the RapidWright
 directory in the class path as well as $CLASSPATH (which is set or appended to by running rapidwright.tcl). From the directory containing ILADebug.java:
 
 compile: `javac ILADebug.java`\
@@ -24,18 +24,17 @@ run: `java -cp .:<RapidWright_dir>/RapidWright:$CLASSPATH ILADebug <args ...>`
 
 ##### Input dcp
 
-- The program expects that the input dcp was generated using Vivado at `<project_name>.runs/impl_1/<design_name>_wrapper_routed.dcp`.
-- The parts of this that the program depends on are
+- ILADebug expects that the input dcp was generated using Vivado at `<project_name>.runs/impl_1/<design_name>_wrapper_routed.dcp`.
+- The parts of this that ILADebug depends on are
   - The input dcp has been placed. The input dcp being routed shouldn't be necessary (in theory - untested), but at that point why aren't you just adding an ila in Vivado?
   - The filename having `*_wrapper_*` is used when generating default file names.
-    - This may cause errors if the program can't find, or finds the wrong, file.
+    - This may cause errors if ILADebug can't find, or finds the wrong, file.
 
 ##### .iii Directory
 
 This program keeps intermediate solutions and files in a directory named `.iii`.
 
-The `-d` or `--iii_dir` flag can be used with a path as an argument to specify an existing `.iii`
-file or the location in which to create the directory.
+The `-d` flag can be used with a path as an argument to specify an existing `.iii` directory or the location in which to create the directory. Otherwise the default value used is `<pwd>/.iii`.
 
 For other file inputs to the command line you can use the shortcut `#iii/<filename>` to mean `<iii_dir>/<filename>`.
 
@@ -67,7 +66,7 @@ Further help with the arguments can be found by invoking run with any set of arg
 There are 2 ways to choose which nets in your design are connected to the probes.
 
 1. Mark nets for debug.
-   - This is the default option. The program will automatically call a rapidwright function which will search the design checkpoint it opens for nets that have the property `mark_debug` (in edif) or `MARK_DEBUG` (in xdc).
+   - This is the default option. ILADebug will automatically call a rapidwright function which will search the design checkpoint it opens for nets that have the property `mark_debug` (in edif) or `MARK_DEBUG` (in xdc).
    - The nets will be connected to probes numbered 0 to n with no guarentees for ordering (though the list of connections will be written to a probes file with the same directory and name as the output dcp).
 2. Specify a probes file.
    - There is a flag in the command line arguments that lets you specify a [probes file](#probes-file).
@@ -77,17 +76,17 @@ There are 2 ways to choose which nets in your design are connected to the probes
 - A list of key value pairs of probes to nets in the original design. Each line should be of the form:
   > `top/u_ila_0/probe0[<index>] <net/in/original/design>`
   - ie. `<probe><split=" "><net>`
-- If a probe is not written as `top/u_ila_0/probe0[<index>]` then the program may reassign the index as whatever it chooses.
+- If a probe is not written as `top/u_ila_0/probe0[<index>]` then ILADebug may reassign the index as whatever it chooses.
 - Lines beginning with a hash character (`#`) are ignored as commments.
 - Empty lines cause errors.
 - Ordering of the probe indecies does not matter in the probe file. However, the number of probe wires requested is determined by the largest index in the probe file.
-- To ensure the final set of probes is contiguous and covers all probe wires, the program will try to connect any unconnected probe wires (indecies which have not been specified) to a reset net if it can find one, or some other net if it can't.
+- To ensure the final set of probes is contiguous and covers all probe wires, ILADebug will try to connect any unconnected probe wires (indecies which have not been specified) to a reset net if it can find one, or some other net if it can't.
 - Probe indicies must be between 0 and 4095 (inclusive).
-- The output probes file will show how the program actually connected the probes and nets together.
+- The output probes file will show how ILADebug actually connected the probes and nets together.
 
 ## Old
 
-This contains mostly some early work that was combined together to form the basis of ILADebug. 
+This contains mostly some early work that was combined together to form the basis of ILADebug.
 
 The files here contain pieces of the process to add an ila and probes. You shouldn't need them, but I haven't removed them yet.
 
@@ -122,7 +121,7 @@ There has only been limited testing done so far. All of it using the same initia
 - Allows for changing number of probes between runs.
 - Handles changing the clk_net or probe_depth between runs (adds .iii/metadata.txt).
 - Added shortcut so `#iii/` replaces .iii dir for files on command line.
-- Sometimes the program cannot route probes even if it previously succeeded with the probes in a different order.
+- Sometimes ILADebug cannot route probes even if it previously succeeded with the probes in a different order.
 - At least one example of adding more probes allowing routing to complete successfully and bitgen to complete successfully.
 - These errors may be due to randomized nature of some of place and route.
 
