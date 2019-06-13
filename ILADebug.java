@@ -703,6 +703,7 @@ public class ILADebug {
     public Design safeReadCheckpoint(String dcp_file){
         Design d = null;
         try {
+            printIfVerbose("Loading design from '" + dcp_file + "'.");
             d = Design.readCheckpoint(dcp_file);
         } catch(RuntimeException e){
             printIfVerbose("\nCouldn't open design at '" + dcp_file + "' due to encrypted edif.");
@@ -892,9 +893,9 @@ public class ILADebug {
         String create_dir = null;
         if(files != null){
             if(filename.endsWith("/.iii"))
-                create_dir = filename + "/.iii";
+                create_dir = filename;
             else
-                create_dir = ".iii";
+                create_dir = filename + "/.iii";
         }
         iii_dir = getDir(filename, true, false, create_dir, false);
 
@@ -979,6 +980,7 @@ public class ILADebug {
                 MessageGenerator.briefErrorAndExit("Canceling operation. Requested args differ from metadata,"
                         + " but can't find input_dcp.\n");
             }
+            printIfVerbose("\nCouldn't find original design. Found intermediate design.");
             design = safeReadCheckpoint(no_probes_dcp_file);
             return 1;
         }
@@ -995,9 +997,17 @@ public class ILADebug {
                         || FileTools.isFileNewer(no_ila_dcp_file.getAbsolutePath(), 
                                                     no_probes_dcp_file.getAbsolutePath())){
                     // no_ila is newer than no_probes or refresh requested
+                    if(arg_map.containsKey("refresh"))
+                        printIfVerbose("\nRefresh requested.");
+                    else if(differs_from_metadata)
+                        printIfVerbose("\nMetadata changed.");
+                    else
+                        printIfVerbose("\nOriginal design is newer than intermediate design.");
+                    
                     design = safeReadCheckpoint(no_ila_dcp_file);
                     return 0;
                 }
+                printIfVerbose("\nFound intermediate design.");
                 design = safeReadCheckpoint(no_probes_dcp_file);
                 return 1;
             }
@@ -1035,7 +1045,7 @@ public class ILADebug {
             filename = FileTools.removeFileExtension(output_dcp_file.getName()) + ".bit";
             File output_bit_file = new File(output_dcp_file.getParent(), filename);
             if(output_bit_file.exists()){
-                MessageGenerator.briefError("The output ltx would overwrite another file at '"
+                MessageGenerator.briefError("The output bitstream would overwrite another file at '"
                         + output_bit_file.getAbsolutePath() + "'.");
                 any_err = true;
             }
@@ -1226,16 +1236,8 @@ public class ILADebug {
                             + input_probes_file.getAbsolutePath() + "'.\nExiting.");
                 else if(probe_map.size() > MAX_PROBE_COUNT)
                     MessageGenerator.briefErrorAndExit("Too many probes (or too high index probes) "
-                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                           + "'.\nMaximum index of a probe is " + (MAX_PROBE_COUNT-1) + " .\nExiting.");
+                            + "found in probe file '" + input_probes_file.getAbsolutePath()
+                            + "'.\nMaximum index of a probe is " + (MAX_PROBE_COUNT-1) + " .\nExiting.");
             }
         }
         // load from nets marked for debug
