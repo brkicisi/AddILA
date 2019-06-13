@@ -70,6 +70,12 @@ There are 2 ways to choose which nets in your design are connected to the probes
 - Probe indicies must be between 0 and 4095 (inclusive).
 - The output probes file will show how the program actually connected the probes and nets together.
 
+## Old
+
+This contains mostly some early work that was combined together to form the basis of ILADebug. 
+
+The files here contain pieces of the process to add an ila and probes.
+
 ## Notes
 
 1. Modified `rapidwright.tcl:571`
