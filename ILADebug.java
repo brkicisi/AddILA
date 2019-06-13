@@ -393,7 +393,7 @@ public class ILADebug {
     }
 
     private static String helpLine(String arg_str, String help_str, int longest){
-        int padding = longest - arg_str.length() + 2;
+        int padding = longest - arg_str.length() + 4;
         String pad_str = String.format("%1$" + padding + "s", " - ");
         return arg_str + pad_str + help_str + "\n";
     }
@@ -425,8 +425,9 @@ public class ILADebug {
     // used {c, d, f, i, o, Pp, q, r, v}
     private static final MyToken[] TOKEN_LIST = {
         new MyToken("input_probes_file", new String[]{"-i", "--input_probes"}, 
-                new String[]{"probes_txt"}, new boolean[]{true},
-                "Insert probes using mappings from this file."),
+                new String[]{"probes_txt/dcp"}, new boolean[]{true},
+                "If this file ends with '.dcp', insert probes using nets marked for debug in this dcp."
+                + "Else, insert probes using mappings from this file."),
         new MyToken("output_probes_file", new String[]{"-o", "--output_probes"}, 
                 new String[]{"probes_txt"}, new boolean[]{true},
                 "Write probe mappings to this file."),
@@ -547,7 +548,15 @@ public class ILADebug {
      * intermediate design.
      */
     public void writeMetadata(){
-        File f = new File(iii_dir, "metadata.txt");
+        if(no_ila_dcp_file == null)
+            return;
+        
+        String filename = no_ila_dcp_file.getName();
+        if(filename.contains("_wrapper_"))
+            filename = filename.replaceFirst("_wrapper_[\\S|\\s]*", "_metadata.txt");
+        else
+            filename = filename.replaceFirst(".dcp", "_metadata.txt");
+        File f = new File(iii_dir, filename);
         printIfVerbose("Writing metadata to '" + f.getAbsolutePath() + "'");
 
         List<String> lines = new ArrayList<>();
@@ -564,7 +573,16 @@ public class ILADebug {
      * Reads probe_depth and clk_net from a file. Used when loading an intermediate design.
      */
     public void readMetadata(){
-        File f = new File(iii_dir, "metadata.txt");
+        if(no_ila_dcp_file == null)
+            return;
+        
+        String filename = no_ila_dcp_file.getName();
+        if(filename.contains("_wrapper_"))
+            filename = filename.replaceFirst("_wrapper_[\\S|\\s]*", "_metadata.txt");
+        else
+            filename = filename.replaceFirst(".dcp", "_metadata.txt");
+        File f = new File(iii_dir, filename);
+
         if(!f.exists()){
             printIfVerbose("No metadata found at '" + f.getAbsolutePath() + "'");
             return;
@@ -616,11 +634,11 @@ public class ILADebug {
             }
             printIfVerbose("Used " + key + " of '" + probe_depth + "'.");
         }
-        else if(sv != null || list == null){
+        if(sv != null && list == null){
             probe_depth = v;
             printIfVerbose("Used " + key + " of '" + probe_depth + "' from metadata.");
         }
-        else {
+        else if(list == null){
             probe_depth = 4096;
             printIfVerbose("Used default " + key + " of '" + probe_depth + "'.");
         }
@@ -799,6 +817,8 @@ public class ILADebug {
             // filename starts with '/' or '~', assume it is a complete path.
             if(filename.startsWith("/") || filename.startsWith("~"))
                 f = new File(filename);
+            else if(filename.startsWith("#iii/"))
+                f = new File(iii_dir, filename.replaceFirst("#iii/", ""));
             else // assume filename relative to pwd
                 f = new File(pwd_dir.getAbsolutePath() + "/" + filename);
 
@@ -812,9 +832,7 @@ public class ILADebug {
             printIfVerbose("Could not access/find "
                     + (dir ? "directory" : "file") + " '" + f.getPath() + "'.");
         }
-        // else // filename == null
-        //     printIfVerbose("Filename was null.");
-        
+
         if(!create_in_iii && !create_in_pwd)
             return null;
 
@@ -826,6 +844,8 @@ public class ILADebug {
         // create file
         if(create_name.startsWith("/") || create_name.startsWith("~"))
             f = new File(create_name);
+        else if(filename.startsWith("#iii/"))
+            f = new File(iii_dir, filename.replaceFirst("#iii/", ""));
         else if(create_in_iii)
             f = new File(iii_dir.getAbsolutePath() + "/" + create_name);
         else if(create_in_pwd)
@@ -869,7 +889,13 @@ public class ILADebug {
 
         ArrayList<String> files = arg_map.get("iii_dir");
         String filename = (files == null) ? null : files.get(0);
-        String create_dir = (files == null || !filename.endsWith("/.iii")) ? ".iii" : filename;
+        String create_dir = null;
+        if(files != null){
+            if(filename.endsWith("/.iii"))
+                create_dir = filename + "/.iii";
+            else
+                create_dir = ".iii";
+        }
         iii_dir = getDir(filename, true, false, create_dir, false);
 
 
@@ -1006,6 +1032,13 @@ public class ILADebug {
                         + output_ltx_file.getAbsolutePath() + "'.");
                 any_err = true;
             }
+            filename = FileTools.removeFileExtension(output_dcp_file.getName()) + ".bit";
+            File output_bit_file = new File(output_dcp_file.getParent(), filename);
+            if(output_bit_file.exists()){
+                MessageGenerator.briefError("The output ltx would overwrite another file at '"
+                        + output_bit_file.getAbsolutePath() + "'.");
+                any_err = true;
+            }
             // if any would overwrite, exit
             if(any_err)
                 MessageGenerator.briefErrorAndExit("Use force (-f) to overwrite.\nCanceling operation.\n");
@@ -1067,9 +1100,9 @@ public class ILADebug {
                 if(EDIFTools.getNet(design.getNetlist(), default_net) != null)
                     return;
             }
-            printIfVerbose("\nFailed to find a net to connect unused probes to.");
+            printIfVerbose("\nFailed to find a net to which to connect unused probes.");
         } catch(NullPointerException npe){
-            printIfVerbose("\nFailed to find a net to connect unused probes to.");
+            printIfVerbose("\nFailed to find a net to which to connect unused probes.");
             default_net = null;
         }
     }
@@ -1080,6 +1113,7 @@ public class ILADebug {
      * numbering 0 to probe_map.size()-1.
      */
     public void getProbesFromFile(){
+        printIfVerbose("\nLoading probes from probes file '" + input_probes_file.getAbsolutePath() + "'.");
         Map<String, String> input_probes = ProbeRouter.readProbeRequestFile(input_probes_file.getAbsolutePath());
         String[] probe_str = {"top/u_ila_0/probe0[", "]"};
         LinkedList<String> bad_probe = new LinkedList<>();
@@ -1133,33 +1167,86 @@ public class ILADebug {
             probe_map.put(probe_str[0] + i + probe_str[1], default_net);
     }
 
+    private void getProbesFromDCP(String dcp_file, boolean use_design){
+        printIfVerbose("\nLoading probes from nets marked for debug in '" + dcp_file + "'.");
+
+        List<String> debug_nets = null;
+        if(use_design){
+            debug_nets = ILAInserter.getNetsMarkedForDebug(design);
+        }
+        else {
+            Design d = safeReadCheckpoint(dcp_file);
+            debug_nets = ILAInserter.getNetsMarkedForDebug(d);
+        }
+        setDefaultNet(debug_nets);
+        probe_map = new HashMap<>();
+        
+        String[] probe_str = {"top/u_ila_0/probe0[", "]"};
+        for(int i = 0 ; i < debug_nets.size() && i < MAX_PROBE_COUNT; i++)
+           probe_map.put(probe_str[0] + i + probe_str[1], debug_nets.get(i));
+        
+        if(debug_nets.size() > MAX_PROBE_COUNT)
+        MessageGenerator.briefMessage("\nMore than " + MAX_PROBE_COUNT + " nets marked for debug. \n"
+                + "Truncating list of debug nets.");
+    }
+
     /**
      * Load the probes map from input_probes_file if specified, else from nets marked for debug.
      * Also sets the probe count from command line if given, else sets it same as size of probe map.
      */
     private int loadProbes(int step){
+        String probe_file = input_probes_file.getAbsolutePath();
+        
         // if given probe file, load from it
-        if(arg_map.containsKey("input_probes_file")){
-            getProbesFromFile();
+        if(probe_file != null){
+            if(probe_file.endsWith(".dcp")){
+                File f_dcp = getExistingFile(probe_file, true);
+                boolean use_design = (step == 0) && f_dcp.equals(no_ila_dcp_file)
+                    || (step == 1) && f_dcp.equals(no_probes_dcp_file);
+                getProbesFromDCP(f_dcp.getAbsolutePath(), use_design);
 
-            if(probe_map == null || probe_map.size() < 1)
-                MessageGenerator.briefErrorAndExit("No probes found in probe file '"
-                        + input_probes_file.getAbsolutePath() + "'.\nExiting.");
-            else if(probe_map.size() > MAX_PROBE_COUNT)
-                MessageGenerator.briefErrorAndExit("Too many probes (or too high index probes) "
+                if(probe_map.size() < 1){
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("No nets marked for debug in '");
+                    if(step == 0)
+                        sb.append(no_ila_dcp_file.getAbsolutePath());
+                    else if(step == 1)
+                        sb.append(no_probes_dcp_file.getAbsolutePath());
+                    else
+                        sb.append("????");
+                    sb.append("'.\nExiting.");
+                    MessageGenerator.briefErrorAndExit(sb.toString());
+                }
+            }
+            else {
+                getProbesFromFile();
+
+                if(probe_map == null || probe_map.size() < 1)
+                    MessageGenerator.briefErrorAndExit("No probes found in probe file '"
+                            + input_probes_file.getAbsolutePath() + "'.\nExiting.");
+                else if(probe_map.size() > MAX_PROBE_COUNT)
+                    MessageGenerator.briefErrorAndExit("Too many probes (or too high index probes) "
+                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
                         + "found in probe file '" + input_probes_file.getAbsolutePath() 
-                        + "'.\nMaximum index of a probe is " + (MAX_PROBE_COUNT-1) + " .\nExiting.");
+                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                        + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                            + "found in probe file '" + input_probes_file.getAbsolutePath() 
+                           + "'.\nMaximum index of a probe is " + (MAX_PROBE_COUNT-1) + " .\nExiting.");
+            }
         }
         // load from nets marked for debug
         else {
-            List<String> debug_nets = ILAInserter.getNetsMarkedForDebug(design);
-            setDefaultNet(debug_nets);
-            probe_map = new HashMap<>();
+            if(step == 0)
+                getProbesFromDCP(no_ila_dcp_file.getAbsolutePath(), true);
+            else if(step == 1)
+                getProbesFromDCP(no_probes_dcp_file.getAbsolutePath(), true);
+            else
+                printIfVerbose("\n'step' was not 0 or 1.");
             
-            String[] probe_str = {"top/u_ila_0/probe0[", "]"};
-            for(int i = 0 ; i < debug_nets.size() && i < MAX_PROBE_COUNT; i++)
-                probe_map.put(probe_str[0] + i + probe_str[1], debug_nets.get(i));
-
             if(probe_map.size() < 1){
                 StringBuilder sb = new StringBuilder();
                 sb.append("No nets marked for debug in '");
@@ -1172,9 +1259,6 @@ public class ILADebug {
                 sb.append("'.\nExiting.");
                 MessageGenerator.briefErrorAndExit(sb.toString());
             }
-            else if(debug_nets.size() > MAX_PROBE_COUNT)
-                MessageGenerator.briefMessage("\nMore than " + MAX_PROBE_COUNT + " nets marked for debug. \n"
-                        + "Truncating list of debug nets.");
         }
 
         ArrayList<String> list = arg_map.get("probe_count");
@@ -1441,11 +1525,11 @@ public class ILADebug {
 
             design = safeReadCheckpoint(no_probes_dcp_file);
         }
-
+        
         // route probes into design
-        printIfVerbose("\nStarting to route probes into design.");
+        printIfVerbose("\nStarting to place probes into design.");
         my_updateProbeConnections();
-        printIfVerbose("Finished routing probes.\n");
+        printIfVerbose("Finished placing probes.\n");
         filename = output_dcp_file.getAbsolutePath();
         design.writeCheckpoint(filename);
         
@@ -1460,7 +1544,7 @@ public class ILADebug {
         script.run();
 
         printIfVerbose("\nFinal outputs written.");
-        printIfVerbose("Finished.");
+        printIfVerbose("Finished.\n");
     }
 
     public static void main(String[] args){

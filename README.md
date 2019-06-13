@@ -2,6 +2,12 @@
 
 Add an ILA to a Vivado project using RapidWright.
 
+Vivado lets you add an ila to a placed design, but routing the design with the ila may take longer and/or change how your design is routed. Errors may change due to the rerouting which cannot be debugged easily.
+
+The advantage of using ILADebug is that it can add an ila and probes to a routed design.
+
+Some warnings and fixes I used are recorded in [notes](#notes)
+
 ## ILADebug
 
 ILADebug.java is the main worker. It calls upon RapidWright libraries to add an ila and probes to an already placed and routed design.
@@ -15,6 +21,29 @@ compile: `javac ILADebug.java`\
 run: `java -cp .:<RapidWright_dir>/RapidWright:$CLASSPATH ILADebug <args ...>`
 
 #### Arguments
+
+##### Input dcp
+
+- The program expects that the input dcp was generated using Vivado at `<project_name>.runs/impl_1/<design_name>_wrapper_routed.dcp`.
+- The parts of this that it depends on are
+  - The input dcp has been placed. The input dcp being routed shouldn't be necessary, but at that point why aren't you just adding an ila in Vivado?
+  - The filename having `*_wrapper_*` is used when generating default file names.
+    - This may cause errors if the program can't find, or finds the wrong, file.
+
+##### .iii Directory
+
+This program keeps intermediate solutions and files in a directory named `.iii`.
+
+The `-d` or `--iii_dir` flag can be used with a path as an argument to specify an existing `.iii`
+file or the location in which to create the directory.
+
+For other file inputs to the command line you can use the shortcut `#iii/<filename>` to mean `<iii_dir>/<filename>`.
+
+##### Probe Count
+
+The idea of this argument is that you can reserve space to expand the number of probes without needing to reinsert an ila with more probe connections later.
+
+##### Help
 
 Further help with the arguments can be found by invoking run with any set of arguments including `-h` or `--help`.
 
@@ -55,7 +84,13 @@ There are 2 ways to choose which nets in your design are connected to the probes
    > `+ (instance top (viewref netlist (cellref design_1_wrapper (libraryref work)))`
 1. The following functions from RapidWright code gave errors. To solve this, modified versions are used in ILADebug.java (renamed `my_<original_function_name>`).
    1. `EDIFTools.connectDebugProbe()`
-   2. `ProbeRouter.updateProbeConnections()`
+   1. `ProbeRouter.updateProbeConnections()`
+
+## Bugs
+
+I am sure there must be still bugs.
+
+There has only been limited testing done so far. All of it using the same initial dcp file.
 
 ## History
 
@@ -66,6 +101,10 @@ There are 2 ways to choose which nets in your design are connected to the probes
 - 12 June 2019
 - Allows for changing number of probes between runs.
 - Handles changing the clk_net or probe_depth between runs (adds .iii/metadata.txt).
+- Added shortcut so `#iii/` replaces .iii dir for files on command line.
+- Sometimes the program cannot route probes even if it previously succeeded with the probes in a different order.
+- At least one example of adding more probes allowing routing to complete successfully and bitgen to complete successfully.
+- These errors may be due to randomized nature of some of place and route.
 
 #### v1.0
 
