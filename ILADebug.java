@@ -13,8 +13,7 @@
  *      - Vivado can be called from command line using 'vivado'
  *      - class path given to java includes RapidWright paths
  *      
- * Notes:
- *      - some changes made to RapidWright code were made (described in ILAInserter.txt)
+ * Notes: README.md
  * 
  * 
  * 
@@ -181,20 +180,21 @@ public class ILADebug {
     
     static enum TCLEnum {
         SOURCE_RW("source " + FileTools.getRapidWrightPath() + File.separator + FileTools.TCL_FOLDER_NAME
-                        + File.separator + "rapidwright.tcl", "q", null),
-        OPEN_DCP("open_checkpoint", "q", ".dcp"),
-        WRITE_DCP("write_checkpoint", "qf", ".dcp"),
-        PLACE("place_design", "q", null),
-        ROUTE("route_design", "q", null),
-        WRITE_EDIF("write_edif", "qf", ".edf"),
-        WRITE_LTX("write_debug_probes", "qf", ".ltx"),
-        WRITE_BITSTREAM("write_bitstream", "qf", ".bit");
+                        + File.separator + "rapidwright.tcl", "qv", null),
+        OPEN_DCP("open_checkpoint", "qv", ".dcp"),
+        WRITE_DCP("write_checkpoint", "qvf", ".dcp"),
+        PLACE("place_design", "qv", null),
+        ROUTE("route_design", "qv", null),
+        WRITE_EDIF("write_edif", "qvf", ".edf"),
+        WRITE_LTX("write_debug_probes", "qvf", ".ltx"),
+        WRITE_BITSTREAM("write_bitstream", "qvf", ".bit");
 
         private final String command;
         private final String options;
         private final String extension;
         private final String force = "-force";
         private final String quiet = "-quiet";
+        private final String verbose = "-verbose";
 
         TCLEnum(String command, String options, String extension){
             this.command = command;
@@ -216,6 +216,8 @@ public class ILADebug {
                         case 'q':
                             sb.append(" " + quiet);
                             break;
+                        case 'v':
+                            sb.append(" " + verbose);
                         default:
                             break;
                     }
@@ -258,14 +260,14 @@ public class ILADebug {
         File tcl_file = null;
         
         TCLScript(String input_dcp, String output_file, String tcl_script_name){
-            this(null, input_dcp, output_file, (quiet() ? "q" : "") + (force() ? "f" : ""), tcl_script_name);
+            this(null, input_dcp, output_file, (quiet() ? "q" : "") + (extraVerbose() ? "v" : "") + (force() ? "f" : ""), tcl_script_name);
         }
 
         /**
          * Same, but options are taken from those input at command line.
          */
         TCLScript(List<TCLEnum> cmds, String input_dcp, String output_file, String tcl_script_name){
-            this(cmds, input_dcp, output_file, (quiet() ? "q" : "") + (force() ? "f" : ""), tcl_script_name);
+            this(cmds, input_dcp, output_file, (quiet() ? "q" : "") + (extraVerbose() ? "v" : "") + (force() ? "f" : ""), tcl_script_name);
         }
         
         /**
@@ -283,7 +285,10 @@ public class ILADebug {
             this.options = options;
 
             tcl_script = new ArrayList<>();
-            tcl_script.add(new TCLCommand(TCLEnum.SOURCE_RW, "q", null));
+            if(extraVerbose())
+                tcl_script.add(new TCLCommand(TCLEnum.SOURCE_RW, null));
+            else
+                tcl_script.add(new TCLCommand(TCLEnum.SOURCE_RW, "q", null));
             tcl_script.add(new TCLCommand(TCLEnum.OPEN_DCP, options, input_dcp));
             
             if(cmds != null)
@@ -370,11 +375,18 @@ public class ILADebug {
         return arg_map.containsKey("force");
     }
     /**
-     * True if verbose was part of the command line args and quiet wasn't.
+     * True if verbose or extra_verbose was part of the command line args and quiet wasn't.
      * @return
      */
     public boolean verbose(){
-        return !quiet() && arg_map.containsKey("verbose");
+        return !quiet() && (arg_map.containsKey("verbose") || arg_map.containsKey("extra_verbose"));
+    }
+    /**
+     * True if extra_verbose was part of the command line args and quiet wasn't.
+     * @return
+     */
+    public boolean extraVerbose(){
+        return !quiet() && arg_map.containsKey("extra_verbose");
     }
     /**
      * True if quiet was part of the command line args.
@@ -422,11 +434,11 @@ public class ILADebug {
         sb.append("\n");
         MessageGenerator.briefMessageAndExit(sb.toString());
     }
-    // used {c, d, f, i, o, Pp, q, r, v}
+    // used {c, d, f, i, o, Pp, q, r, Vv}
     private static final MyToken[] TOKEN_LIST = {
         new MyToken("input_probes_file", new String[]{"-i", "--input_probes"}, 
                 new String[]{"probes_txt/dcp"}, new boolean[]{true},
-                "If this file ends with '.dcp', insert probes using nets marked for debug in this dcp."
+                "If this file ends with '.dcp', insert probes using nets marked for debug in this dcp. "
                 + "Else, insert probes using mappings from this file."),
         new MyToken("output_probes_file", new String[]{"-o", "--output_probes"}, 
                 new String[]{"probes_txt"}, new boolean[]{true},
@@ -452,9 +464,11 @@ public class ILADebug {
         new MyToken("force", new String[]{"-f", "--force"},
                 "Force overwrite of output files (intermediate files in .iii are always overwritten)."),
         new MyToken("quiet", new String[]{"-q", "--quiet"},
-                "Display less output."),
+                "Display less progress information. Run Vivado tcl commands with '-quiet' flag."),
         new MyToken("verbose", new String[]{"-v", "--verbose"},
-                "Display extra progress information (ignored if also quiet).")
+                "Display extra progress information (ignored if also quiet)."),
+        new MyToken("extra_verbose", new String[]{"-V", "--extra_verbose"},
+                "Display extra progress information (ignored if also quiet). Run Vivado tcl commands with '-verbose' flag.")
     };
     private static final MyPositionalArg[] POSITIONAL_ARGS = {
         new MyPositionalArg("input_dcp", true,
@@ -1522,7 +1536,7 @@ public class ILADebug {
             // place design
             script = new TCLScript(filename, filename, "place_design.tcl");
             script.add(TCLEnum.PLACE);
-            script.add(TCLEnum.WRITE_DCP, "f" + (quiet() ? "q" : ""));
+            script.add(TCLEnum.WRITE_DCP, "f" + (quiet() ? "q" : "") + (extraVerbose() ? "v" : ""));
             script.run();
 
             design = safeReadCheckpoint(no_probes_dcp_file);
@@ -1546,7 +1560,7 @@ public class ILADebug {
         script.run();
 
         printIfVerbose("\nFinal outputs written.");
-        printIfVerbose("Finished.\n");
+        MessageGenerator.briefMessage((!verbose() ? "\n" : "") + "Finished.\n");
     }
 
     public static void main(String[] args){
