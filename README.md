@@ -74,7 +74,7 @@ There are 2 ways to choose which nets in your design are connected to the probes
 
 This contains mostly some early work that was combined together to form the basis of ILADebug. 
 
-The files here contain pieces of the process to add an ila and probes.
+The files here contain pieces of the process to add an ila and probes. You shouldn't need them, but I haven't removed them yet.
 
 ## Notes
 
