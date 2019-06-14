@@ -561,7 +561,7 @@ public class ILADebug {
         for (String probe : probe_list)
             p.add(probe + " " + probe_map.get(probe));
         
-        printIfVerbose("\nWriting output probes file to '" + filename + "'.")
+        printIfVerbose("\nWriting output probes file to '" + filename + "'.");
         FileTools.writeLinesToTextFile(p, filename);
     }
 
@@ -1169,6 +1169,11 @@ public class ILADebug {
                 try {
                     p_num = Integer.parseInt(p.getKey().substring(probe_str[0].length(), 
                                     p.getKey().length() - probe_str[1].length()));
+                    
+                    if(probe_nums.contains(p_num)){
+                        printIfVerbose("\nMultiple nets trying to connect to '" + p.getKey() + "'.");
+                        printIfVerbose(probe_map.get(p.getKey()) + " is overwritten with " + p.getValue());
+                    }
                     probe_nums.add(p_num);
                     probe_map.put(p.getKey(), p.getValue());
                 } catch(NumberFormatException nfe){
