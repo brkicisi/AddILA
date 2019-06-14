@@ -548,6 +548,32 @@ public class ILADebug {
     }
 
     /**
+     * Read a mapping file. Ignores blank lines and lines beginning with '#'.
+     * Strips whitespace from read strings.
+     * @param filename File to read from.
+     * @param separator String that separates key from value.
+     * @param warn Print a warning if overwriting the same key?
+     * @return The mappings read from the file.
+     */
+    public static Map<String, String> readMapFile(String filename, String separator, boolean warn){
+        Map<String, String> m = new TreeMap<>();
+        List<String> lines = FileTools.getLinesFromTextFile(filename);
+		for(String line : lines){
+            if(line.trim().startsWith("#"))
+                continue;
+            if(line.trim().isEmpty())
+                continue;
+            String[] parts = line.split(separator);                
+            String ret = m.put(parts[0].trim(), parts[1].trim());
+            if(warn && ret != null){
+                MessageGenerator.briefMessage("Warning: Duplicate key '" + parts[0].trim() + "'.");
+                MessageGenerator.briefMessage("Overwriting '" + ret + "' with '" + parts[1].trim() + "'.");
+            }
+        }
+        return m;
+    }
+    
+    /**
      * Writes the probe map to a file. The probe map is pairs of probe nets and the nets
      * in the design that they are connected to.
      * @param filename File to write probemap to.
@@ -612,16 +638,7 @@ public class ILADebug {
         
         printIfVerbose("Reading metadata from '" + f.getAbsolutePath() + "'");
 
-        meta_map = new HashMap<>();
-        List<String> lines = FileTools.getLinesFromTextFile(f.getAbsolutePath());
-		for(String line : lines){
-            if(line.trim().startsWith("#"))
-                continue;
-            if(line.trim().isEmpty())
-                continue;
-			String[] parts = line.split("=");
-			meta_map.put(parts[0].trim(), parts[1].trim());
-		}
+        meta_map = readMapFile(f.getAbsolutePath(), "=", true);
     }
 
     /**
@@ -1152,7 +1169,7 @@ public class ILADebug {
      */
     public void getProbesFromFile(){
         printIfVerbose("\nLoading probes from probes file '" + input_probes_file.getAbsolutePath() + "'.");
-        Map<String, String> input_probes = ProbeRouter.readProbeRequestFile(input_probes_file.getAbsolutePath());
+        Map<String, String> input_probes = readMapFile(input_probes_file.getAbsolutePath(), " ", true);
         String[] probe_str = {"top/u_ila_0/probe0[", "]"};
         LinkedList<String> bad_probe = new LinkedList<>();
         TreeSet<Integer> probe_nums = new TreeSet<>();
@@ -1169,11 +1186,6 @@ public class ILADebug {
                 try {
                     p_num = Integer.parseInt(p.getKey().substring(probe_str[0].length(), 
                                     p.getKey().length() - probe_str[1].length()));
-                    
-                    if(probe_nums.contains(p_num)){
-                        printIfVerbose("\nMultiple nets trying to connect to '" + p.getKey() + "'.");
-                        printIfVerbose(probe_map.get(p.getKey()) + " is overwritten with " + p.getValue());
-                    }
                     probe_nums.add(p_num);
                     probe_map.put(p.getKey(), p.getValue());
                 } catch(NumberFormatException nfe){
